@@ -25,12 +25,59 @@ def load_data():
         st.error(f"❌ 데이터 로드 오류: {e}")
     return None
 
+# ------------------------
+# PDF 디자인
+# ------------------------
+def make_pdf(words, message, filename="시험지.pdf"):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # 제목
+    story.append(Paragraph("📘 영단어 시험지", styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    # 응원 메시지
+    if message:
+        story.append(Paragraph(f"<b>응원 메시지:</b> {message}", styles["Normal"]))
+        story.append(Spacer(1, 20))
+
+    # 표 데이터 (2단 구성)
+    data = [["번호", "단어", "뜻 쓰기", "번호", "단어", "뜻 쓰기"]]
+
+    for i in range(0, len(words), 2):
+        left = words[i]
+        left_row = [i+1, left.get("단어",""), "___________"]
+
+        if i+1 < len(words):
+            right = words[i+1]
+            right_row = [i+2, right.get("단어",""), "___________"]
+        else:
+            right_row = ["", "", ""]
+
+        data.append(left_row + right_row)
+
+    # 테이블 스타일
+    table = Table(data, colWidths=[30, 100, 150, 30, 100, 150])
+    table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 0.5, colors.black),
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("FONTSIZE", (0,0), (-1,-1), 10),
+    ]))
+
+    story.append(table)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 df = load_data()
 
-if df is not None:
-    st.success("✅ 데이터 불러오기 성공!")
-    st.dataframe(df.head())  # 화면에 데이터 확인
-
+# if df is not None:
+#     st.success("✅ 데이터 불러오기 성공!")
+#     st.dataframe(df.head())  # 화면에 데이터 확인
 
 # ------------------------
 # 단어 추출 함수
@@ -73,10 +120,10 @@ def make_markdown_table(words):
     # 2단으로 나누기
     for i in range(0, len(words), 2):
         left = words[i]
-        left_str = f"{i+1} | {left['단어']} | ___________"
+        left_str = f"{i+1} | {left['표제어']} | "
         if i+1 < len(words):
             right = words[i+1]
-            right_str = f"{i+2} | {right['단어']} | ___________"
+            right_str = f"{i+2} | {right['표제어']} | "
         else:
             right_str = " | | "
         md += f"| {left_str} | {right_str} |\n"
@@ -88,23 +135,20 @@ def make_markdown_table(words):
 # 앱 UI 
 # ------------------------
 # 1. 앱 타이틀
-st.title("📘접근성")
+st.header("📕 교육부 필수 영단어3000 시험지 생성기")
 
 # 2. 하루 단어 수 선택 (토글 느낌 → radio)
 word_count = st.radio(
-    "몇개",
-    # "하루에 몇 개의 단어를 외울 계획인가요?",
+    "하루에 몇 개의 단어를 외울 계획인가요?",
     [15, 20, 30],
     index=0
 )
 
 # 3. Day 입력
-# day = st.number_input("몇째날의 시험지를 생성할까요?", min_value=1, step=1)
-day = st.number_input("Day 몇?", min_value=1, step=1)
+day = st.number_input("Day 몇째날의 시험지를 생성할까요?", min_value=1, step=1)
 
 # 4. 응원 메시지 입력
-# message = st.text_area("자녀에게 전할 응원 메시지", "오늘도 화이팅!")
-message = st.text_area("메시지")
+message = st.text_area("자녀에게 전할 응원 메시지", "오늘도 화이팅!")
 
 words = get_exam_words(df, day, word_count)
 
@@ -125,7 +169,7 @@ if words:
         story.append(Spacer(1, 20))
 
         for i, row in enumerate(words, start=1):
-            story.append(Paragraph(f"{i}. {row['단어']} - ___________", styles['Normal']))
+            story.append(Paragraph(f"{i}. {row['표제어']} - ___________", styles['Normal']))
             story.append(Spacer(1, 10))
 
         story.append(Spacer(1, 40))
