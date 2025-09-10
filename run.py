@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
+import random
 from google.auth.exceptions import GoogleAuthError
 from io import BytesIO
 from reportlab.pdfbase import pdfmetrics
@@ -41,28 +42,50 @@ def get_exam_words(df, day, word_per_day):
     day: 시험 Day (정수)
     word_per_day: 하루에 외울 단어 수
     """
-    total_words = len(df)
 
     def get_day_words(d):
         if d <= 0:
             return []
         start_idx = (d - 1) * word_per_day
         end_idx = start_idx + word_per_day
-        return df.iloc[start_idx:end_idx].to_dict(orient="records")
+        day_rows = df.iloc[start_idx:end_idx]  # 표제어 기준 slice
 
-    # 1. 당일 단어
-    today_words = get_day_words(day)
+        words = []
+        for _, row in day_rows.iterrows():
+            # 표제어
+            val = row.get("표제어")
+            if val and str(val).strip():
+                words.append(str(val))
 
-    # 2. 복습 Day 후보
+            # 파생어 (쉼표로 구분된 경우)
+            val = row.get("파생어")
+            if val and str(val).strip():
+                derivatives = [w.strip() for w in str(val).strip("()").split(",") if w.strip()]
+
+                for w in derivatives:
+                    if w.startswith("/"):
+                        words.append(w.lstrip("/ "))
+                    else:
+                        words.append(w)
+
+            # 쓰기
+            val = row.get("쓰기")
+            if val and str(val).strip():
+                words.append(str(val))
+        
+        return words        
+
     review_offsets = [1, 3, 7, 14, 30, 60, 120]
-    review_days = [day - i for i in review_offsets if (day - i) > 0]
+    all_days = [day] + [day - i for i in review_offsets if day - i > 0]
 
-    # 3. 복습 단어
-    review_words = []
-    for d in review_days:
-        review_words.extend(get_day_words(d))
+    all_words = []
+    day_word_counts = {}
+    for d in all_days:
+        day_words = get_day_words(d)
+        all_words.extend(day_words)
+        day_word_counts[d] = len(day_words)
 
-    return today_words + review_words
+    return all_words, day_word_counts
 
 # ------------------------
 # 이중 컬럼 데이터 만들기
@@ -73,11 +96,11 @@ def build_two_column_data(words):
 
     for i in range(0, len(words), 2):
         left = words[i]
-        left_row = [i+1, left.get("표제어",""), "  "]
+        left_row = [i+1, left, "  "]
 
         if i+1 < len(words):
             right = words[i+1]
-            right_row = [i+2, right.get("표제어",""), "  "]
+            right_row = [i+2, right, "  "]
         else:
             right_row = ["", "", ""]
 
@@ -100,12 +123,8 @@ def make_markdown_table(words):
 # ------------------------
 # PDF 디자인
 # ------------------------
-def make_title(day: int):
-    review_offsets = [1, 3, 7, 14, 30, 60, 120]
-    days = [day] + [day - o for o in review_offsets if day - o > 0]
-    return "Day" + ",".join(str(d) for d in days)
 
-def make_pdf(day, words, message, filename="시험지.pdf"):
+def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     
@@ -122,16 +141,22 @@ def make_pdf(day, words, message, filename="시험지.pdf"):
 
     story = []
 
+    # ------------------------
     # 시험지 타이틀
-    title_text = make_title(day)
-    story.append(Paragraph(title_text, styles['NotoTitle']))
+    # ------------------------
+
+    pdf_title = "Day" + ",".join(str(d) for d in day_word_counts.keys())
+    story.append(Paragraph(pdf_title, styles['NotoTitle']))
+    story.append(Spacer(1, 30))
+
+    # Day별 문제 수 표시
+    counts_text = " / ".join([f"day{d}: {cnt}개" for d, cnt in day_word_counts.items()])
+    story.append(Paragraph(counts_text, styles['Noto']))
     story.append(Spacer(1, 12))
 
-    # 응원 메시지
-    if message:
-        story.append(Paragraph(f"<b>응원 메시지:</b> {message}", styles['Noto']))
-        story.append(Spacer(1, 20))
-
+    # ------------------------
+    # 표
+    # ------------------------    
     # 표 데이터
     data = build_two_column_data(words)
 
@@ -141,9 +166,9 @@ def make_pdf(day, words, message, filename="시험지.pdf"):
             Paragraph(str(row[0]), num_style),          # 번호 열 우측
             Paragraph(str(row[1]), styles['Noto']),     # 단어 왼쪽
             Paragraph(str(row[2]), styles['Noto']),     # 뜻 왼쪽
-            Paragraph(str(row[0]), num_style),  
-            Paragraph(str(row[1]), styles['Noto']),  
-            Paragraph(str(row[2]), styles['Noto'])  
+            Paragraph(str(row[3]), num_style),  
+            Paragraph(str(row[4]), styles['Noto']),  
+            Paragraph(str(row[5]), styles['Noto'])  
         ] 
         for row in data
     ]
@@ -159,6 +184,15 @@ def make_pdf(day, words, message, filename="시험지.pdf"):
     ]))
 
     story.append(table)
+    story.append(Spacer(1, 30))
+        
+    # ------------------------
+    # 응원 메세지
+    # ------------------------
+    if message:
+        story.append(Paragraph(f"<b>응원 메시지:</b> {message}", styles['Noto']))
+
+
     doc.build(story)
     buffer.seek(0)
     return buffer
@@ -196,23 +230,29 @@ day = st.number_input("Day 몇째날의 시험지를 생성할까요?", min_valu
 # 4. 응원 메시지 입력
 message = st.text_area("자녀에게 전할 응원 메시지", "오늘도 화이팅!")
 
-words = get_exam_words(df, day, num_words)
+words, day_word_counts = get_exam_words(df, day, num_words)
 
-# 5. 시험지 생성 버튼
+# 5. 미리보기와 버튼
 if words:
     # 미리보기 (Markdown 표)
     st.markdown("### 📋 시험지 미리보기")
     st.markdown(make_markdown_table(words))
 
-    # 시험지 생성 버튼
-    if st.button("시험지 생성하기"):
-        start_idx = (day - 1) * num_words
+    # 시시험지 생성 버튼과 셔플 버튼
+    col1, col2 = st.columns([1,1])
 
-        pdf_buffer = make_pdf(day, words, message)
+    with col1:
+        if st.button("시험지 생성하기"):
+            pdf_buffer = make_pdf(day, words, message)
+            st.download_button(
+                label="📥 PDF 다운로드",
+                data=pdf_buffer,
+                file_name=f"day{day}_시험지.pdf",
+                mime="application/pdf"
+            )
 
-        st.download_button(
-            label="📥 PDF 다운로드",
-            data=pdf_buffer,
-            file_name=f"day{day}_시험지.pdf",
-            mime="application/pdf"
-        )
+    with col2:
+        if st.button("셔플"):
+            random.shuffle(words)
+            st.markdown("### 🔀 단어 순서가 셔플되었습니다!")
+            st.markdown(make_markdown_table(words))
