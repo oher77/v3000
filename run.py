@@ -13,7 +13,9 @@ from reportlab.lib import colors
 
 # NotoSansKR-Regular.ttf 파일을 프로젝트에 넣고 등록
 pdfmetrics.registerFont(TTFont('NotoSansKRBold', './fonts/NotoSansKR-Bold.ttf'))
-pdfmetrics.registerFont(TTFont('NotoSansKR', './fonts/NotoSansKR-Regular.ttf'))
+pdfmetrics.registerFont(TTFont('NotoSansKRLight', './fonts/NotoSansKR-Light.ttf'))
+# pdfmetrics.registerFont(TTFont('NanumGothicExtraBold', './fonts/NanumGothic-ExtraBold.ttf'))
+# pdfmetrics.registerFont(TTFont('NanumGothic', './fonts/NanumGothic-Regular.ttf'))
 
 # 초기화
 if "words" not in st.session_state:
@@ -140,17 +142,18 @@ def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
         leftMargin = 40,
         rightMargin = 40,
         topMargin = 40,
-        bottomMargin = 40
+        bottomMargin = 40,
         )
     
    # 테이블 폰트 스타일 정의
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='Noto', parent=styles['Normal'], fontName='NotoSansKR', fontSize=9))
-    styles.add(ParagraphStyle(name='NotoTitle', parent=styles['Noto'], fontName='NotoSansKRBold', fontSize=26))
+    styles.add(ParagraphStyle(name='Noto', parent=styles['Normal'], fontName='NotoSansKRLight', fontSize=9, textColor=colors.HexColor('#212529')))
+    styles.add(ParagraphStyle(name='NotoTitle', parent=styles['Noto'], fontName='NotoSansKRBold', fontSize=24))
+    # styles.add(ParagraphStyle(name='Noto', parent=styles['Normal'], fontName='NanumGothic', fontSize=9, textColor=colors.HexColor('#212529')))
+    # styles.add(ParagraphStyle(name='NotoTitle', parent=styles['Noto'], fontName='NanumGothicExtraBold', fontSize=24))
     num_style = ParagraphStyle(
-        name="Body",
-        fontName="NotoSansKR",
-        fontSize=10,
+        name='NumStyle',
+        parent=styles['Noto'],
         alignment=2  # 번호 오른쪽 정렬 0=left, 1=center, 2=right
     )     
 
@@ -162,7 +165,7 @@ def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
 
     pdf_title = "Day" + ",".join(str(d) for d in day_word_counts.keys())
     story.append(Paragraph(pdf_title, styles['NotoTitle']))
-    story.append(Spacer(1, 28))
+    story.append(Spacer(1, 26))
 
     # Day별 문제 수 표시
     counts_text = " / ".join([f"day{d}: {cnt}개" for d, cnt in day_word_counts.items()])
