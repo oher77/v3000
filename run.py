@@ -15,6 +15,10 @@ from reportlab.lib import colors
 pdfmetrics.registerFont(TTFont('NotoSansKRBold', './fonts/NotoSansKR-Bold.ttf'))
 pdfmetrics.registerFont(TTFont('NotoSansKR', './fonts/NotoSansKR-Regular.ttf'))
 
+# 초기화
+if "words" not in st.session_state:
+    st.session_state.words = None
+
 KEY_FILE_PATH = './voca3000_account_key.json'
 
 @st.cache_data
@@ -88,11 +92,11 @@ def get_exam_words(df, day, word_per_day):
     return all_words, day_word_counts
 
 # ------------------------
-# 이중 컬럼 데이터 만들기
+# 이중 컬럼 데이터 만들기 함수
 # ------------------------
 def build_two_column_data(words):
     """2단 구성 표 데이터를 리스트로 반환"""
-    data = [["번호", "단어", "뜻 쓰기", "번호", "단어", "뜻 쓰기"]]
+    data = [["번호", "단어", "뜻 쓰기", "번호.", "단어.", "뜻 쓰기."]]
 
     for i in range(0, len(words), 2):
         left = words[i]
@@ -113,25 +117,36 @@ def build_two_column_data(words):
 # ------------------------
 def make_markdown_table(words):
     data = build_two_column_data(words)
-    md = ""
-    for row in data:
-        md += " | ".join(str(x) for x in row) + "\n"
+    # 헤더 행 추가
+    md = "| " + " | ".join(data[0]) + " |\n"
+    md += "|" + " --- |" * len(data[0]) + "\n"
+
+    # 본문 행
+    for row in data[1:]:
+        md += "| " + " | ".join(str(x) for x in row) + " |\n"
 
     return md
 
 
 # ------------------------
-# PDF 디자인
+# PDF 생성 함수
 # ------------------------
 
 def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=A4,
+        leftMargin = 40,
+        rightMargin = 40,
+        topMargin = 40,
+        bottomMargin = 40
+        )
     
    # 테이블 폰트 스타일 정의
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='Noto', parent=styles['Normal'], fontName='NotoSansKR'))
-    styles.add(ParagraphStyle(name='NotoTitle', parent=styles['Noto'], fontName='NotoSansKRBold', fontSize=28))
+    styles.add(ParagraphStyle(name='Noto', parent=styles['Normal'], fontName='NotoSansKR', fontSize=9))
+    styles.add(ParagraphStyle(name='NotoTitle', parent=styles['Noto'], fontName='NotoSansKRBold', fontSize=26))
     num_style = ParagraphStyle(
         name="Body",
         fontName="NotoSansKR",
@@ -147,12 +162,12 @@ def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
 
     pdf_title = "Day" + ",".join(str(d) for d in day_word_counts.keys())
     story.append(Paragraph(pdf_title, styles['NotoTitle']))
-    story.append(Spacer(1, 30))
+    story.append(Spacer(1, 28))
 
     # Day별 문제 수 표시
     counts_text = " / ".join([f"day{d}: {cnt}개" for d, cnt in day_word_counts.items()])
     story.append(Paragraph(counts_text, styles['Noto']))
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 10))
 
     # ------------------------
     # 표
@@ -174,23 +189,27 @@ def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
     ]
         
     # 테이블 스타일
-    table = Table(data_with_style, colWidths=[32, 100, 120, 32, 100, 120])
+    table = Table(data_with_style, colWidths=[33, 90, 130, 34, 90, 130],hAlign='LEFT'
+                #   ,rowHeights=[20]+[22]*(len(data)-1)
+                  )
     table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor('#ced4da')),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor('#adb5bd')),
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor('#f1f3f5')),
         ("ALIGN", (0,0), (-1,0), "CENTER"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("FONTSIZE", (0,0), (-1,-1), 10),
+        ("TOPPADDING", (0,1),(-1,-1), 4),
+        ("BOTTOMPADDING", (0,1), (-1,-1), 4),
     ]))
 
     story.append(table)
-    story.append(Spacer(1, 30))
+    story.append(Spacer(1, 20))
         
     # ------------------------
     # 응원 메세지
     # ------------------------
     if message:
-        story.append(Paragraph(f"<b>응원 메시지:</b> {message}", styles['Noto']))
+        story.append(Paragraph(f"{message}", styles['Noto']))
 
 
     doc.build(story)
@@ -205,54 +224,66 @@ st.markdown("""
 <style>
 h1 { font-size: 2.25rem!important }
 h2 { font-size: 1.75rem!important }
-h3 { font-size: 1.25rem!important }            
+h3 { font-size: 1.25rem!important }
+.button-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;                
+}            
 </style>
 """, unsafe_allow_html=True)
 # ------------------------
 # 앱 UI 
 # ------------------------
-df = load_data()
-
-# if df is not None:
-#     st.success("✅ 데이터 불러오기 성공!")
-#     st.dataframe(df.head())  # 화면에 데이터 확인
 
 # 1. 앱 타이틀
 st.header("📕 교육부 필수 영단어 3000 [2022개정]")
 st.header("📃 시험지 생성기")
 
-# 2. 하루 단어 수 선택 (토글 느낌 → radio)
+# 2. 조건 입력 UI
 num_words = st.radio("하루에 몇 개의 단어를 외울 계획인가요?", [15, 20, 30])
-
-# 3. Day 입력
 day = st.number_input("Day 몇째날의 시험지를 생성할까요?", min_value=1, step=1)
-
-# 4. 응원 메시지 입력
 message = st.text_area("자녀에게 전할 응원 메시지", "오늘도 화이팅!")
+
+df = load_data()
+# if df is not None:
+#     st.success("✅ 데이터 불러오기 성공!")
+#     st.dataframe(df.head())  # 화면에 데이터 확인
 
 words, day_word_counts = get_exam_words(df, day, num_words)
 
-# 5. 미리보기와 버튼
-if words:
-    # 미리보기 (Markdown 표)
-    st.markdown("### 📋 시험지 미리보기")
-    st.markdown(make_markdown_table(words))
+# 3. 버튼 UI를 한 줄에 배치
+# st.container()을 사용해 버튼을 감싸고, CSS로 내부 정렬을 제어
+with st.container(horizontal=True, horizontal_alignment="left"):    
+    # 미리보기 버튼
+    if st.button("시험지 미리보기"):
+        words, day_word_counts = get_exam_words(df, day, num_words)
+        random.shuffle(words)
+        st.session_state.words = words
+        st.session_state.day_word_counts = day_word_counts
 
-    # 시시험지 생성 버튼과 셔플 버튼
-    col1, col2 = st.columns([1,1])
-
-    with col1:
-        if st.button("시험지 생성하기"):
-            pdf_buffer = make_pdf(day, words, message)
-            st.download_button(
-                label="📥 PDF 다운로드",
-                data=pdf_buffer,
-                file_name=f"day{day}_시험지.pdf",
-                mime="application/pdf"
-            )
-
-    with col2:
+    # 셔플 버튼
+    if st.session_state.words is not None:
         if st.button("셔플"):
-            random.shuffle(words)
-            st.markdown("### 🔀 단어 순서가 셔플되었습니다!")
-            st.markdown(make_markdown_table(words))
+            random.shuffle(st.session_state.words)
+
+    # PDF 다운로드 버튼
+    if st.session_state.words is not None:
+        pdf_buffer = make_pdf(st.session_state.words, st.session_state.day_word_counts, message)
+        st.download_button(
+            label="📥 PDF 다운로드",
+            data=pdf_buffer,
+            file_name=f"day{day}_시험지.pdf",
+            mime="application/pdf"
+        )
+
+# 4. 미리표기 표시
+if st.session_state.words is not None:
+    st.markdown("### 📋 시험지 미리보기")
+    
+    # 미리보기 데이터를 pandas DataFrame으로 생성
+    data = build_two_column_data(st.session_state.words)
+    preview_df = pd.DataFrame(data[1:], columns=data[0])
+    
+    # st.dataframe을 사용하여 표를 표시
+    st.dataframe(preview_df, hide_index=True)
