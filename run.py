@@ -11,6 +11,35 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
+# ------------------------
+# GA4 연동 스크립트 삽입
+# ------------------------
+GA_MEASUREMENT_ID = "G-XXXXXXX"  # 👉 실제 발급받은 ID로 교체
+
+st.markdown(f"""
+<script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+  gtag('config', '{GA_MEASUREMENT_ID}');
+</script>
+""", unsafe_allow_html=True)
+
+def send_event(event_name, params=None):
+    """GA4 이벤트 로깅"""
+    if params is None:
+        params = {}
+    js = f"""
+    <script>
+        if (typeof gtag !== 'undefined') {{
+            gtag('event', '{event_name}', {params});
+        }}
+    </script>
+    """
+    st.markdown(js, unsafe_allow_html=True)
+
+
 # NotoSansKR-Regular.ttf 파일을 프로젝트에 넣고 등록
 pdfmetrics.registerFont(TTFont('NotoSansKRBold', './fonts/NotoSansKR-Bold.ttf'))
 pdfmetrics.registerFont(TTFont('NotoSansKRLight', './fonts/NotoSansKR-Light.ttf'))
@@ -264,11 +293,13 @@ with st.container(horizontal=True, horizontal_alignment="left"):
         random.shuffle(words)
         st.session_state.words = words
         st.session_state.day_word_counts = day_word_counts
+        send_event("exam_generate", {"day": day, "num_words": num_words})
 
     # 셔플 버튼
     if st.session_state.words is not None:
         if st.button("셔플"):
             random.shuffle(st.session_state.words)
+            send_event("shuffle_click", {"day": day})
 
     # PDF 다운로드 버튼
     if st.session_state.words is not None:
@@ -279,6 +310,8 @@ with st.container(horizontal=True, horizontal_alignment="left"):
             file_name=f"day{day}_시험지.pdf",
             mime="application/pdf"
         )
+        send_event("pdf_download", {"day": day, "num_words": num_words})
+        send_event("message_write", {"message":message, "length": len(message)})
 
 # 4. 미리표기 표시
 if st.session_state.words is not None:
