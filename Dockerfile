@@ -37,11 +37,11 @@ COPY voca3000_account_key.json ./
 # -------------------------
 # 6. 컨테이너 실행 명령
 # -------------------------
-EXPOSE 8501
+EXPOSE 8080
 
 # 환경 변수 기본값 설정 (실제 배포 시 secret 관리 권장)
 # ENV GA_MEASUREMENT_ID=G-XXXXXXX
 # ENV GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/voca3000_account_key.json
 
 # Streamlit 기본 실행 (실행할 메인 파일 이름 맞춰주세요, 예: app.py)
-CMD ["streamlit", "run", "run.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "run.py", "--server.port=$PORT", "--server.address=0.0.0.0"]

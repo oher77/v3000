@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import gspread
 import random
+import os
+from google.oauth2 import service_account
 from google.auth.exceptions import GoogleAuthError
 from io import BytesIO
 from reportlab.pdfbase import pdfmetrics
@@ -14,13 +16,13 @@ from reportlab.lib import colors
 # ------------------------
 # GA4 연동 스크립트 삽입
 # ------------------------
-GA_MEASUREMENT_ID = "G-XXXXXXX"  # 👉 실제 발급받은 ID로 교체
+GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID")  # 환경 변수에서 가져오기
 
 st.markdown(f"""
 <script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
-  function gtag(){{dataLayer.push(arguments);}}
+  function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', '{GA_MEASUREMENT_ID}');
 </script>
@@ -50,12 +52,15 @@ pdfmetrics.registerFont(TTFont('NotoSansKRLight', './fonts/NotoSansKR-Light.ttf'
 if "words" not in st.session_state:
     st.session_state.words = None
 
-KEY_FILE_PATH = './voca3000_account_key.json'
-
 @st.cache_data
 def load_data():
+    key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not key_path:
+        st.error("❌ GOOGLE_APPLICATION_CREDENTIALS 환경변수가 설정되지 않았습니다.")
+        return None
     try:
-        gc = gspread.service_account(filename=KEY_FILE_PATH)
+        credentials = service_account.Credentials.from_service_account_file(key_path)
+        gc = gspread.authorize(credentials)
         worksheet = gc.open('voca_data_m').sheet1
         rows = worksheet.get_all_values()
         df = pd.DataFrame(rows[1:], columns=rows[0])
