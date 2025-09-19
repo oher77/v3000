@@ -1,10 +1,11 @@
+import json
+import os
+import gspread
+from google.oauth2.service_account import Credentials
+from google.auth.exceptions import GoogleAuthError
 import streamlit as st
 import pandas as pd
-import gspread
 import random
-import os
-from google.oauth2 import service_account
-from google.auth.exceptions import GoogleAuthError
 from io import BytesIO
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -22,7 +23,7 @@ st.markdown(f"""
 <script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
+  function gtag(){{dataLayer.push(arguments);}}
   gtag('js', new Date());
   gtag('config', '{GA_MEASUREMENT_ID}');
 </script>
@@ -54,17 +55,31 @@ if "words" not in st.session_state:
 
 @st.cache_data
 def load_data():
-    key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if not key_path:
-        st.error("❌ GOOGLE_APPLICATION_CREDENTIALS 환경변수가 설정되지 않았습니다.")
-        return None
     try:
-        credentials = service_account.Credentials.from_service_account_file(key_path)
+        # Sheets와 Drive API 접근에 필요한 권한 범위 정의
+        SCOPES = [
+            'https://www.googleapis.com/auth/spreadsheets.readonly',
+            'https://www.googleapis.com/auth/drive.readonly'
+        ]
+
+        # 서비스 계정 키의 JSON 내용 가져오기
+        secrets_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if not secrets_json:
+            st.error("❌ GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 찾을 수 없습니다.")
+            return None
+
+        # JSON 내용으로 자격 증명(Credentials) 객체 생성 및 권한 범위 적용
+        credentials_info = json.loads(secrets_json)
+        credentials = Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
+        
+        # 권한이 적용된 자격 증명으로 gspread 인증
         gc = gspread.authorize(credentials)
         worksheet = gc.open('voca_data_m').sheet1
         rows = worksheet.get_all_values()
         df = pd.DataFrame(rows[1:], columns=rows[0])
         return df
+    except json.JSONDecodeError as e:
+        st.error(f"❌ JSON 파싱 오류: Secret Manager에 저장된 키 형식을 확인해주세요. ({e})")
     except gspread.SpreadsheetNotFound:
         st.error("❌ 'voca_data_m'라는 이름의 Google Sheets 파일을 찾을 수 없습니다.")
     except GoogleAuthError:

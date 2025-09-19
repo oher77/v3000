@@ -44,4 +44,4 @@ EXPOSE 8080
 # ENV GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/voca3000_account_key.json
 
 # Streamlit 기본 실행 (실행할 메인 파일 이름 맞춰주세요, 예: app.py)
-CMD ["streamlit", "run", "run.py", "--server.port=$PORT", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "run.py", "--server.port=8080", "--server.address=0.0.0.0"]
