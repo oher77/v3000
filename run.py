@@ -1,8 +1,10 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import gspread
 import random
 import os
+import json
 from google.oauth2 import service_account
 from google.auth.exceptions import GoogleAuthError
 from io import BytesIO
@@ -18,29 +20,19 @@ from reportlab.lib import colors
 # ------------------------
 GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID")  # 환경 변수에서 가져오기
 
-st.markdown(f"""
-<script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', '{GA_MEASUREMENT_ID}');
-</script>
-""", unsafe_allow_html=True)
-
-def send_event(event_name, params=None):
-    """GA4 이벤트 로깅"""
-    if params is None:
-        params = {}
-    js = f"""
-    <script>
-        if (typeof gtag !== 'undefined') {{
-            gtag('event', '{event_name}', {params});
-        }}
-    </script>
+if GA_MEASUREMENT_ID:
+# Google Tag Manager 스니펫
+    gtm_snippet = f"""
+    <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
+    new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    }})(window,document,'script','dataLayer','{GA_MEASUREMENT_ID}');</script>
     """
-    st.markdown(js, unsafe_allow_html=True)
-
+    # HTML 컴포넌트를 사용하여 GTM 스니펫 삽입
+    components.html(gtm_snippet, height=0)
+else: 
+    st.warning("GA_MEASUREMENT_ID 환경 변수가 설정되지 않았습니다. GA 태그가 작동하지 않습니다.")
 
 # NotoSansKR-Regular.ttf 파일을 프로젝트에 넣고 등록
 pdfmetrics.registerFont(TTFont('NotoSansKRBold', './fonts/NotoSansKR-Bold.ttf'))
@@ -54,12 +46,16 @@ if "words" not in st.session_state:
 
 @st.cache_data
 def load_data():
-    key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if not key_path:
-        st.error("❌ GOOGLE_APPLICATION_CREDENTIALS 환경변수가 설정되지 않았습니다.")
+    key_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not key_json:
+        st.error("❌ 환경변수 'GOOGLE_APPLICATION_CREDENTIALS'가 설정되지 않았습니다.")
         return None
+
     try:
-        credentials = service_account.Credentials.from_service_account_file(key_path)
+        # JSON 문자열을 파싱하여 Credentials 객체 생성
+        credentials_info = json.loads(key_json)
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+
         gc = gspread.authorize(credentials)
         worksheet = gc.open('voca_data_m').sheet1
         rows = worksheet.get_all_values()
@@ -298,13 +294,11 @@ with st.container(horizontal=True, horizontal_alignment="left"):
         random.shuffle(words)
         st.session_state.words = words
         st.session_state.day_word_counts = day_word_counts
-        send_event("exam_generate", {"day": day, "num_words": num_words})
 
     # 셔플 버튼
     if st.session_state.words is not None:
         if st.button("셔플"):
             random.shuffle(st.session_state.words)
-            send_event("shuffle_click", {"day": day})
 
     # PDF 다운로드 버튼
     if st.session_state.words is not None:
@@ -315,8 +309,6 @@ with st.container(horizontal=True, horizontal_alignment="left"):
             file_name=f"day{day}_시험지.pdf",
             mime="application/pdf"
         )
-        send_event("pdf_download", {"day": day, "num_words": num_words})
-        send_event("message_write", {"message":message, "length": len(message)})
 
 # 4. 미리표기 표시
 if st.session_state.words is not None:
