@@ -5,7 +5,7 @@ import gspread
 import random
 import os
 import json
-from google.oauth2 import service_account
+from google.oauth2.service_account import Credentials
 from google.auth.exceptions import GoogleAuthError
 from io import BytesIO
 from reportlab.pdfbase import pdfmetrics
@@ -15,28 +15,28 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# ------------------------
-# GA4 연동 스크립트 삽입
-# ------------------------
-GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID")  # 환경 변수에서 가져오기
+# # ------------------------
+# # GA4 연동 스크립트 삽입
+# # ------------------------
+# GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID")  # 환경 변수에서 가져오기
 
-if GA_MEASUREMENT_ID:
-# Google Tag Manager 스니펫
-    gtm_snippet = f"""
-    <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
-    new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    }})(window,document,'script','dataLayer','{GA_MEASUREMENT_ID}');</script>
-    """
-    # HTML 컴포넌트를 사용하여 GTM 스니펫 삽입
-    components.html(gtm_snippet, height=0)
-else: 
-    st.warning("GA_MEASUREMENT_ID 환경 변수가 설정되지 않았습니다. GA 태그가 작동하지 않습니다.")
+# if GA_MEASUREMENT_ID:
+# # Google Tag Manager 스니펫
+#     gtm_snippet = f"""
+#     <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
+#     new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],
+#     j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+#     'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+#     }})(window,document,'script','dataLayer','{GA_MEASUREMENT_ID}');</script>
+#     """
+#     # HTML 컴포넌트를 사용하여 GTM 스니펫 삽입
+#     components.html(gtm_snippet, height=0)
+# else:
+#     st.warning("GA_MEASUREMENT_ID 환경 변수가 설정되지 않았습니다. GA 태그가 작동하지 않습니다.")
 
 # NotoSansKR-Regular.ttf 파일을 프로젝트에 넣고 등록
-pdfmetrics.registerFont(TTFont('NotoSansKRBold', './fonts/NotoSansKR-Bold.ttf'))
-pdfmetrics.registerFont(TTFont('NotoSansKRLight', './fonts/NotoSansKR-Light.ttf'))
+pdfmetrics.registerFont(TTFont("NotoSansKRBold", "./fonts/NotoSansKR-Bold.ttf"))
+pdfmetrics.registerFont(TTFont("NotoSansKRLight", "./fonts/NotoSansKR-Light.ttf"))
 # pdfmetrics.registerFont(TTFont('NanumGothicExtraBold', './fonts/NanumGothic-ExtraBold.ttf'))
 # pdfmetrics.registerFont(TTFont('NanumGothic', './fonts/NanumGothic-Regular.ttf'))
 
@@ -44,23 +44,39 @@ pdfmetrics.registerFont(TTFont('NotoSansKRLight', './fonts/NotoSansKR-Light.ttf'
 if "words" not in st.session_state:
     st.session_state.words = None
 
+
 @st.cache_data
 def load_data():
-    key_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if not key_json:
-        st.error("❌ 환경변수 'GOOGLE_APPLICATION_CREDENTIALS'가 설정되지 않았습니다.")
-        return None
-
     try:
-        # JSON 문자열을 파싱하여 Credentials 객체 생성
-        credentials_info = json.loads(key_json)
-        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        # Sheets와 Drive API 접근에 필요한 권한 범위 정의
+        SCOPES = [
+            "https://www.googleapis.com/auth/spreadsheets.readonly",
+            "https://www.googleapis.com/auth/drive.readonly",
+        ]
 
+        # 서비스 계정 키의 JSON 내용 가져오기
+        secrets_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if not secrets_json:
+            st.error("❌ GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 찾을 수 없습니다.")
+            return None
+
+        # JSON 내용으로 자격 증명(Credentials) 객체 생성 및 권한 범위 적용
+        credentials_info = json.loads(secrets_json)
+        credentials = Credentials.from_service_account_info(
+            credentials_info, scopes=SCOPES
+        )
+
+        # 권한이 적용된 자격 증명으로 gspread 인증
         gc = gspread.authorize(credentials)
-        worksheet = gc.open('voca_data_m').sheet1
+        worksheet = gc.open("voca_data_m").sheet1
         rows = worksheet.get_all_values()
         df = pd.DataFrame(rows[1:], columns=rows[0])
         return df
+
+    except json.JSONDecodeError as e:
+        st.error(
+            f"❌ JSON 파싱 오류: Secret Manager에 저장된 키 형식을 확인해주세요. ({e})"
+        )
     except gspread.SpreadsheetNotFound:
         st.error("❌ 'voca_data_m'라는 이름의 Google Sheets 파일을 찾을 수 없습니다.")
     except GoogleAuthError:
@@ -68,6 +84,7 @@ def load_data():
     except Exception as e:
         st.error(f"❌ 데이터 로드 오류: {e}")
     return None
+
 
 # ------------------------
 # 단어 추출 함수
@@ -96,7 +113,9 @@ def get_exam_words(df, day, word_per_day):
             # 파생어 (쉼표로 구분된 경우)
             val = row.get("파생어")
             if val and str(val).strip():
-                derivatives = [w.strip() for w in str(val).strip("()").split(",") if w.strip()]
+                derivatives = [
+                    w.strip() for w in str(val).strip("()").split(",") if w.strip()
+                ]
 
                 for w in derivatives:
                     if w.startswith("/"):
@@ -108,8 +127,8 @@ def get_exam_words(df, day, word_per_day):
             val = row.get("쓰기")
             if val and str(val).strip():
                 words.append(str(val))
-        
-        return words        
+
+        return words
 
     review_offsets = [1, 3, 7, 14, 30, 60, 120]
     all_days = [day] + [day - i for i in review_offsets if day - i > 0]
@@ -123,6 +142,7 @@ def get_exam_words(df, day, word_per_day):
 
     return all_words, day_word_counts
 
+
 # ------------------------
 # 이중 컬럼 데이터 만들기 함수
 # ------------------------
@@ -132,17 +152,18 @@ def build_two_column_data(words):
 
     for i in range(0, len(words), 2):
         left = words[i]
-        left_row = [i+1, left, "  "]
+        left_row = [i + 1, left, "  "]
 
-        if i+1 < len(words):
-            right = words[i+1]
-            right_row = [i+2, right, "  "]
+        if i + 1 < len(words):
+            right = words[i + 1]
+            right_row = [i + 2, right, "  "]
         else:
             right_row = ["", "", ""]
 
         data.append(left_row + right_row)
 
     return data
+
 
 # ------------------------
 # 미리보기 마크다운 표 생성 함수
@@ -164,28 +185,44 @@ def make_markdown_table(words):
 # PDF 생성 함수
 # ------------------------
 
+
 def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(
-        buffer, 
+        buffer,
         pagesize=A4,
-        leftMargin = 40,
-        rightMargin = 40,
-        topMargin = 40,
-        bottomMargin = 40,
-        )
-    
-   # 테이블 폰트 스타일 정의
+        leftMargin=40,
+        rightMargin=40,
+        topMargin=40,
+        bottomMargin=40,
+    )
+
+    # 테이블 폰트 스타일 정의
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='Noto', parent=styles['Normal'], fontName='NotoSansKRLight', fontSize=9, textColor=colors.HexColor('#212529')))
-    styles.add(ParagraphStyle(name='NotoTitle', parent=styles['Noto'], fontName='NotoSansKRBold', fontSize=24))
+    styles.add(
+        ParagraphStyle(
+            name="Noto",
+            parent=styles["Normal"],
+            fontName="NotoSansKRLight",
+            fontSize=9,
+            textColor=colors.HexColor("#212529"),
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="NotoTitle",
+            parent=styles["Noto"],
+            fontName="NotoSansKRBold",
+            fontSize=24,
+        )
+    )
     # styles.add(ParagraphStyle(name='Noto', parent=styles['Normal'], fontName='NanumGothic', fontSize=9, textColor=colors.HexColor('#212529')))
     # styles.add(ParagraphStyle(name='NotoTitle', parent=styles['Noto'], fontName='NanumGothicExtraBold', fontSize=24))
     num_style = ParagraphStyle(
-        name='NumStyle',
-        parent=styles['Noto'],
-        alignment=2  # 번호 오른쪽 정렬 0=left, 1=center, 2=right
-    )     
+        name="NumStyle",
+        parent=styles["Noto"],
+        alignment=2,  # 번호 오른쪽 정렬 0=left, 1=center, 2=right
+    )
 
     story = []
 
@@ -194,56 +231,62 @@ def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
     # ------------------------
 
     pdf_title = "Day" + ",".join(str(d) for d in day_word_counts.keys())
-    story.append(Paragraph(pdf_title, styles['NotoTitle']))
+    story.append(Paragraph(pdf_title, styles["NotoTitle"]))
     story.append(Spacer(1, 26))
 
     # Day별 문제 수 표시
     counts_text = " / ".join([f"day{d}: {cnt}개" for d, cnt in day_word_counts.items()])
-    story.append(Paragraph(counts_text, styles['Noto']))
+    story.append(Paragraph(counts_text, styles["Noto"]))
     story.append(Spacer(1, 10))
 
     # ------------------------
     # 표
-    # ------------------------    
+    # ------------------------
     # 표 데이터
     data = build_two_column_data(words)
 
     # 테이블 폰트 스타일
     data_with_style = [
         [
-            Paragraph(str(row[0]), num_style),          # 번호 열 우측
-            Paragraph(str(row[1]), styles['Noto']),     # 단어 왼쪽
-            Paragraph(str(row[2]), styles['Noto']),     # 뜻 왼쪽
-            Paragraph(str(row[3]), num_style),  
-            Paragraph(str(row[4]), styles['Noto']),  
-            Paragraph(str(row[5]), styles['Noto'])  
-        ] 
+            Paragraph(str(row[0]), num_style),  # 번호 열 우측
+            Paragraph(str(row[1]), styles["Noto"]),  # 단어 왼쪽
+            Paragraph(str(row[2]), styles["Noto"]),  # 뜻 왼쪽
+            Paragraph(str(row[3]), num_style),
+            Paragraph(str(row[4]), styles["Noto"]),
+            Paragraph(str(row[5]), styles["Noto"]),
+        ]
         for row in data
     ]
-        
+
     # 테이블 스타일
-    table = Table(data_with_style, colWidths=[33, 90, 130, 34, 90, 130],hAlign='LEFT'
-                #   ,rowHeights=[20]+[22]*(len(data)-1)
-                  )
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor('#adb5bd')),
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor('#f1f3f5')),
-        ("ALIGN", (0,0), (-1,0), "CENTER"),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("FONTSIZE", (0,0), (-1,-1), 10),
-        ("TOPPADDING", (0,1),(-1,-1), 4),
-        ("BOTTOMPADDING", (0,1), (-1,-1), 4),
-    ]))
+    table = Table(
+        data_with_style,
+        colWidths=[33, 90, 130, 34, 90, 130],
+        hAlign="LEFT",
+        #   ,rowHeights=[20]+[22]*(len(data)-1)
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#adb5bd")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f3f5")),
+                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 1), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
+            ]
+        )
+    )
 
     story.append(table)
     story.append(Spacer(1, 20))
-        
+
     # ------------------------
     # 응원 메세지
     # ------------------------
     if message:
-        story.append(Paragraph(f"{message}", styles['Noto']))
-
+        story.append(Paragraph(f"{message}", styles["Noto"]))
 
     doc.build(story)
     buffer.seek(0)
@@ -253,7 +296,8 @@ def make_pdf(words, day_word_counts, message, filename="시험지.pdf"):
 # ------------------------
 # 앱 UI Style 지정
 # ------------------------
-st.markdown("""
+st.markdown(
+    """
 <style>
 h1 { font-size: 2.25rem!important }
 h2 { font-size: 1.75rem!important }
@@ -264,10 +308,14 @@ h3 { font-size: 1.25rem!important }
             gap: 4px;                
 }            
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 # ------------------------
-# 앱 UI 
+# 앱 UI
 # ------------------------
+# <head> <title> 지정
+st.set_page_config(page_title="교육부 필수영단어3000[2022개정]")
 
 # 1. 앱 타이틀
 st.header("📕 교육부 필수 영단어 3000 [2022개정]")
@@ -287,7 +335,7 @@ words, day_word_counts = get_exam_words(df, day, num_words)
 
 # 3. 버튼 UI를 한 줄에 배치
 # st.container()을 사용해 버튼을 감싸고, CSS로 내부 정렬을 제어
-with st.container(horizontal=True, horizontal_alignment="left"):    
+with st.container(horizontal=True, horizontal_alignment="left"):
     # 미리보기 버튼
     if st.button("시험지 미리보기"):
         words, day_word_counts = get_exam_words(df, day, num_words)
@@ -302,21 +350,23 @@ with st.container(horizontal=True, horizontal_alignment="left"):
 
     # PDF 다운로드 버튼
     if st.session_state.words is not None:
-        pdf_buffer = make_pdf(st.session_state.words, st.session_state.day_word_counts, message)
+        pdf_buffer = make_pdf(
+            st.session_state.words, st.session_state.day_word_counts, message
+        )
         st.download_button(
             label="📥 PDF 다운로드",
             data=pdf_buffer,
             file_name=f"day{day}_시험지.pdf",
-            mime="application/pdf"
+            mime="application/pdf",
         )
 
 # 4. 미리표기 표시
 if st.session_state.words is not None:
     st.markdown("### 📋 시험지 미리보기")
-    
+
     # 미리보기 데이터를 pandas DataFrame으로 생성
     data = build_two_column_data(st.session_state.words)
     preview_df = pd.DataFrame(data[1:], columns=data[0])
-    
+
     # st.dataframe을 사용하여 표를 표시
     st.dataframe(preview_df, hide_index=True)

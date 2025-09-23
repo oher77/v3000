@@ -23,29 +23,33 @@ RUN apt-get update && apt-get install -y \
 # -------------------------
 # 4. requirements 설치
 # -------------------------
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # -------------------------
 # 5. 앱 소스 복사
 # -------------------------
-COPY requirements.txt ./
 COPY run.py ./
 COPY fonts ./fonts
-COPY voca3000_account_key.json ./
+#COPY voca3000_account_key.json ./
 
 # -------------------------
-# 6. 컨테이너 실행 명령
+# 6. GTM 스니펫 추가 (새로운 단계)
+# -------------------------
+# 6-1. 커스텀 index.html 파일을 도커 컨테이너에 복사
+# 이 파일은 GTM 스니펫을 포함하고 있어야 합니다.
+COPY index.html /tmp/index.html
+
+# 6-2. entrypoint.sh 스크립트 복사
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+# 윈도우의 CR-LF 줄바꿈 문자를 제거합니다.
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh
+
+# 실행 권한을 부여합니다.
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# -------------------------
+# 7. 컨테이너 실행 명령
 # -------------------------
 EXPOSE 8080
-
-# 환경 변수 기본값 설정 (실제 배포 시 secret 관리 권장)
-# ENV GA_MEASUREMENT_ID=G-XXXXXXX
-# ENV GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/voca3000_account_key.json
-
-# Streamlit 기본 실행 (실행할 메인 파일 이름 맞춰주세요, 예: app.py)
-<<<<<<< HEAD
-CMD streamlit run run.py --server.port=$PORT --server.address=0.0.0.0
-=======
-CMD ["streamlit", "run", "run.py", "--server.port=8080", "--server.address=0.0.0.0"]
->>>>>>> 9e72d7b81d847d1299cccff33fb818d5f1e80603
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
