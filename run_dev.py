@@ -29,26 +29,8 @@ if "words" not in st.session_state:
 @st.cache_data
 def load_data():
     try:
-        # Sheets와 Drive API 접근에 필요한 권한 범위 정의
-        SCOPES = [
-            "https://www.googleapis.com/auth/spreadsheets.readonly",
-            "https://www.googleapis.com/auth/drive.readonly",
-        ]
-
-        # 서비스 계정 키의 JSON 내용 가져오기
-        secrets_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-        if not secrets_json:
-            st.error("❌ GOOGLE_APPLICATION_CREDENTIALS 환경 변수를 찾을 수 없습니다.")
-            return None
-
-        # JSON 내용으로 자격 증명(Credentials) 객체 생성 및 권한 범위 적용
-        credentials_info = json.loads(secrets_json)
-        credentials = Credentials.from_service_account_info(
-            credentials_info, scopes=SCOPES
-        )
-
         # 권한이 적용된 자격 증명으로 gspread 인증
-        gc = gspread.authorize(credentials)
+        gc = gspread.service_account("voca3000_account_key.json")
         worksheet = gc.open("voca_data_m").sheet1
         rows = worksheet.get_all_values()
         df = pd.DataFrame(rows[1:], columns=rows[0])
@@ -327,8 +309,7 @@ st.set_page_config(page_title="교육부 필수영단어3000[2022개ㅋ정]")
 # 1. 앱 타이틀
 st.header("📕 교육부 필수 영단어 3000 [2022개정]")
 st.header("📃 시험지 생성기")
-st.markdown(
-    f"<p class='p-it'> 🧠 뇌과학 기반 복습주기에 따른 누적 시험지가 생성됩니다. <br> 📉 에빙하우스의 망각곡선 이론을 참고하여 복습주기는 <b>1,3,7,14,30,60,120일</b>로 세팅하였습니다.🐱 <br>💬 예) <b>Day50</b>시험지 생성: <b>Day50 + Day49,47,43,36,20</b>의 단어가 함께 출제됩니다.</p>",unsafe_allow_html=True)
+st.markdown(f"<p class='p-it'> 뇌과학 기반🧠 복습주기에 따른 누적 시험지가 생성됩니다. <br> 에빙하우스의 망각곡선📉 이론을 참고하여 복습주기는 <b>1,3,7,14,30,60,120일</b>로 세팅하였습니다.🐱</p>",unsafe_allow_html=True)
 
 # 2. 조건 입력 UI
 num_words = st.radio("하루에 몇 개의 단어를 외울 계획인가요?", [15, 20, 30])
