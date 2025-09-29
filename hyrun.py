@@ -333,8 +333,8 @@ h3 { font-size: 1.25rem!important }
 st.set_page_config(page_title="교육부 필수영단어3000[2022개ㅋ정]")
 
 # 1. 앱 타이틀
-st.header("📕 교육부 필수 영단어 3000 [2022개정]")
-st.header("📃 시험지 생성기")
+st.header("🧠 머리 쏙쏙 3000")
+st.header("🐱 최종 인출 시험지")
 st.markdown(
     f"<p class='p-it'> 🧠 뇌과학 기반 복습주기에 따른 누적 시험지가 생성됩니다. <br> 📉 에빙하우스의 망각곡선 이론을 참고하여 복습주기는 <b>1,3,7,14,30,60,120일</b>로 세팅하였습니다.🐱 <br>💬 예) <b>Day50</b>시험지 생성: <b>Day50 + Day49,47,43,36,20</b>의 단어가 함께 출제됩니다.</p>",unsafe_allow_html=True)
 
