@@ -67,11 +67,10 @@ def load_data():
         st.error(f"❌ 데이터 로드 오류: {e}")
     return None
 
-
 # ------------------------
 # 단어 추출 함수
 # ------------------------
-def get_exam_words(df, day, word_per_day):
+def get_exam_words(df, day):
     """
     df: DataFrame (단어 목록, index = 0부터 시작)
     day: 시험 Day (정수)
@@ -79,11 +78,20 @@ def get_exam_words(df, day, word_per_day):
     """
 
     def get_day_words(d):
-        if d <= 0:
-            return []
-        start_idx = (d - 1) * word_per_day
-        end_idx = start_idx + word_per_day
-        day_rows = df.iloc[start_idx:end_idx]  # 표제어 기준 slice
+        # d를 문자열로 변환 (예: 3 -> "day3")
+        d_str = str(d) if str(d).startswith("day") else f"day{d}"
+        day_row_indices = df[df["참고 사항"].astype(str).str.contains(d_str, na=False, regex=False)].index.tolist()
+        if not day_row_indices:
+            return pd.DataFrame()
+        start_idx = day_row_indices[0]
+        next_day_idx = (
+            df[df.index > start_idx]["참고 사항"].astype(str).str.contains(r"day\d+", na=False)
+        )
+        try:
+            end_idx = next_day_idx[next_day_idx].index[0]
+            day_rows = df.iloc[start_idx:end_idx]
+        except IndexError:
+            day_rows = df.iloc[start_idx:start_idx + 15]        
 
         words = []
         for _, row in day_rows.iterrows():
@@ -117,7 +125,7 @@ def get_exam_words(df, day, word_per_day):
     all_days = []
     for i in review_offsets:
         candidate = day - i
-        if candidate > 0 and candidate < int(len(df)) / word_per_day:
+        if candidate > 0:
             all_days.append(candidate)
         else:
             continue
@@ -130,7 +138,6 @@ def get_exam_words(df, day, word_per_day):
         day_word_counts[d] = len(day_words)
 
     return all_words, day_word_counts
-
 
 # ------------------------
 # 이중 컬럼 데이터 만들기 함수
@@ -332,7 +339,6 @@ st.markdown(
     f"<p class='p-it'> 🧠 뇌과학 기반 복습주기에 따른 누적 시험지가 생성됩니다. <br> 📉 에빙하우스의 망각곡선 이론을 참고하여 복습주기는 <b>1,3,7,14,30,60,120일</b>로 세팅하였습니다.🐱 <br>💬 예) <b>Day50</b>시험지 생성: <b>Day50 + Day49,47,43,36,20</b>의 단어가 함께 출제됩니다.</p>",unsafe_allow_html=True)
 
 # 2. 조건 입력 UI
-num_words = st.radio("하루에 몇 개의 단어를 외울 계획인가요?", [15, 20, 30])
 day = st.number_input("Day 몇째날의 시험지를 생성할까요?", min_value=1, step=1, help="복습주기의 단어가 함께 출제 됩니다. 1, 3, 7, 14, 30, 60, 120일 전 학습한 단어")
 # 최대 글자 수 설정
 MAX_CHARS = 200
@@ -343,7 +349,7 @@ df = load_data()
 #     st.success("✅ 데이터 불러오기 성공!")
 #     st.dataframe(df.head())  # 화면에 데이터 확인
 
-words, day_word_counts = get_exam_words(df, day, num_words)
+words, day_word_counts = get_exam_words(df, day)
 
 # 3. 버튼 UI를 한 줄에 배치
 # st.container()을 사용해 버튼을 감싸고, CSS로 내부 정렬을 제어
@@ -352,11 +358,10 @@ with st.container(horizontal=True, horizontal_alignment="left"):
     if st.button("시험지 미리보기"):
         track_user_action(
                 event_name="exam_preview_generated",
-                num_words=num_words,
                 day=day,
                 message_length=len(message)
         )
-        words, day_word_counts = get_exam_words(df, day, num_words)
+        words, day_word_counts = get_exam_words(df, day)
         random.shuffle(words)
         st.session_state.words = words
         st.session_state.day_word_counts = day_word_counts
